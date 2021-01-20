@@ -20,12 +20,6 @@ function getIModelGeneratorLink(skillId: string, locale?: string): string {
     return SKILL_ACTION_URLS.IMODEL_EDITOR(skillId, locale);
 }
 
-function getSimulatorLink(skillId: string, locale?: string): string {
-    Logger.verbose(`Calling method: ${SkillActionsViewProvider.name}.getSimulatorLink`);
-    locale = locale ?? EN_US_LOCALE.replace('-', '_');
-    return SKILL_ACTION_URLS.SIMULATOR(skillId, locale);
-}
-
 export class SkillActionsViewProvider implements vscode.TreeDataProvider<PluginTreeItem<Resource>> {
     readonly onDidChangeTreeData = onWorkspaceOpenEventEmitter.event;
     readonly treeView: SkillActionsView;
@@ -39,19 +33,19 @@ export class SkillActionsViewProvider implements vscode.TreeDataProvider<PluginT
         return element;
     }
 
-    async getChildren(element?: PluginTreeItem<Resource>): Promise<PluginTreeItem<Resource>[]> {
+    async getChildren(element?: PluginTreeItem<Resource>): Promise<Array<PluginTreeItem<Resource>>> {
         Logger.debug(`Calling method: ${SkillActionsViewProvider.name}.getChildren`);
         const treeItems: Array<PluginTreeItem<Resource>> = [];
-        const skillFolder = getSkillFolderInWs(this.treeView.context);
+        const skillFolder = getSkillFolderInWs(this.treeView.extensionContext);
         if(skillFolder) {
-            const skillDetails = getSkillDetailsFromWorkspace(this.treeView.context);
+            const skillDetails = getSkillDetailsFromWorkspace(this.treeView.extensionContext);
             const skillName: string = skillDetails.skillName;
             const skillId: string = skillDetails.skillId;
 
             if (!element) {
                 if (!Utils.isNonBlankString(skillId)) {
                     Logger.info(SKILL_NOT_DEPLOYED_MSG);
-                    vscode.window.showWarningMessage(SKILL_NOT_DEPLOYED_MSG);
+                    void vscode.window.showWarningMessage(SKILL_NOT_DEPLOYED_MSG);
                 }
 
                 treeItems.push(
@@ -70,6 +64,8 @@ export class SkillActionsViewProvider implements vscode.TreeDataProvider<PluginT
                 this.addIModelResources(treeItems, skillFolder, skillDetails);
             } else if (element.label === SKILL_ACTION_ITEMS.ALEXA_PRESENTATION_LANGUAGE.LABEL) {
                 this.addAplRendererResources(treeItems, skillFolder, skillDetails);
+            } else if (element.label === SKILL_ACTION_ITEMS.TEST.LABEL) {
+                this.addTestResources(treeItems, skillFolder, skillDetails);
             }
         } else {
             Logger.error(`Method: ${SkillActionsViewProvider.name}.getChildren failure`);
@@ -135,35 +131,42 @@ export class SkillActionsViewProvider implements vscode.TreeDataProvider<PluginT
         );
         
         if (Utils.isNonBlankString(skillId)) {
-            if (await getHostedSkillMetadata(skillId, this.treeView.context)) {
+            const hostedMetadata = await getHostedSkillMetadata(skillId, this.treeView.extensionContext);
+            if (hostedMetadata !== undefined) {
                 treeItemsArray.push(
                     new PluginTreeItem<Resource>(
                         SKILL_ACTION_ITEMS.DEPLOY.LABEL, null,
                         vscode.TreeItemCollapsibleState.None,
                         {
-                            title: 'deploySkill',
-                            command: 'askContainer.skillsConsole.deploySkill'
+                            title: 'deployHostedSkill',
+                            command: 'askContainer.skillsConsole.deployHostedSkill'
                         }, undefined,
                         ContextValueTypes.SKILL,
                     ),
                 );
             } else {
-                Logger.verbose(
-                    `${skillDetails.skillName} is not a hosted skill. Not adding deploy skill action`);
-            }
-        
+                treeItemsArray.push(
+                    new PluginTreeItem<Resource>(
+                        SKILL_ACTION_ITEMS.DEPLOY.LABEL, null,
+                        vscode.TreeItemCollapsibleState.None,
+                        {
+                            title: 'deployNonHostedSkill',
+                            command: 'askContainer.skillsConsole.deploySelfHostedSkill'
+                        }, undefined,
+                        ContextValueTypes.SKILL,
+                    ),
+                );
+            } 
+            
             treeItemsArray.push(
                 new PluginTreeItem<Resource>(
                     SKILL_ACTION_ITEMS.TEST.LABEL, null,
-                    vscode.TreeItemCollapsibleState.None,
-                    {
-                        title: 'openUrl',
-                        command: 'ask.container.openUrl',
-                        arguments: [getSimulatorLink(skillId, skillDetails.defaultLocale)],
-                    }, undefined,
+                    vscode.TreeItemCollapsibleState.Collapsed,
+                    undefined, undefined,
                     ContextValueTypes.SKILL,
                 ),
             );
+           
         }
         return treeItemsArray;
     }
@@ -294,7 +297,7 @@ export class SkillActionsViewProvider implements vscode.TreeDataProvider<PluginT
                 {
                     title: 'openUrl',
                     command: 'ask.container.openUrl',
-                    arguments: [getIModelGeneratorLink(skillId, skillDetails.defaultLocale)],
+                    arguments: [getIModelGeneratorLink(skillId, skillDetails.defaultLocale), {CommandType: 'IM_EDITOR'}],
                 }, undefined,
                 ContextValueTypes.SKILL,
             ),
@@ -315,4 +318,60 @@ export class SkillActionsViewProvider implements vscode.TreeDataProvider<PluginT
 
         return treeItemsArray;
     }
+
+
+    /**
+     * Function to add testing related actions into Skill Actions treeview under 'Test skill' tree item
+     * 
+     * @private
+     * @param {Array<PluginTreeItem<Resource>>} resourceArray - tree items
+     * @returns {Array<PluginTreeItem<Resource>>} - updated tree items
+     * 
+     * @memberOf SkillActionsViewProvider
+     */
+    private addTestResources(
+        treeItemsArray: Array<PluginTreeItem<Resource>>, skillFolder: vscode.Uri,  
+        skillDetails: SkillDetailsType): Array<PluginTreeItem<Resource>> {
+        const skillId: string = skillDetails.skillId;
+
+        if (Utils.isNonBlankString(skillId)) {
+             treeItemsArray.push(
+                new PluginTreeItem<Resource>(
+                    SKILL_ACTION_ITEMS.TEST.ITEMS.OPEN, null,
+                    vscode.TreeItemCollapsibleState.None,
+                    {
+                        title: 'simulateSkill',
+                        command: 'askContainer.skillsConsole.simulateSkill'
+                    }, undefined,
+                    ContextValueTypes.SKILL,
+                ),
+            );
+
+            treeItemsArray.push(
+                new PluginTreeItem<Resource>(
+                    SKILL_ACTION_ITEMS.TEST.ITEMS.REPLAY, null,
+                    vscode.TreeItemCollapsibleState.None,
+                    {
+                        title: 'simulateSkill',
+                        command: 'askContainer.skillsConsole.simulateReplay'                  
+                    }, undefined,
+                    ContextValueTypes.SKILL,
+                ),
+            );
+
+            treeItemsArray.push(
+                new PluginTreeItem<Resource>(
+                    SKILL_ACTION_ITEMS.TEST.ITEMS.VIEWPORT, null,
+                    vscode.TreeItemCollapsibleState.None,
+                    {
+                        title: 'simulateSkill',
+                        command: 'askContainer.skillsConsole.changeSimulatorViewport'                  
+                    }, undefined,
+                    ContextValueTypes.SKILL,
+                ),
+            );
+        }
+        return treeItemsArray;
+    }
 }
+

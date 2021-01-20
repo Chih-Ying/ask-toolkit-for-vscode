@@ -17,8 +17,6 @@ module.exports = {
         'plugin:@typescript-eslint/recommended-requiring-type-checking',
     ],
     "rules": {
-
-
         // ---------------------------------------------------------
         // --- Rules from eslint:recommended that we override
         // ---------------------------------------------------------
@@ -52,6 +50,7 @@ module.exports = {
         "prefer-const": "error",
         "prefer-object-spread": "error",
         "radix": "error",
+        "max-len": [1, 120, 4],
 
         // -- Rules from @typescript-eslint
         "@typescript-eslint/strict-boolean-expressions": ["error"], // avoids frequent sources of errors: 0, "", Promise<T>, null vs undefined
@@ -99,6 +98,16 @@ module.exports = {
         ],
         "@typescript-eslint/type-annotation-spacing": "error",
         "@typescript-eslint/unified-signatures": "error",
+        // TODO: reEnable no-unsafe-assignment
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        // TODO: reEnable no-unsafe-member-access
+        "@typescript-eslint/no-unsafe-member-access": "off",
+        // TODO: reEnable restrict-template-expressions
+        "@typescript-eslint/restrict-template-expressions": "off",
+        // TODO: reEnable no-unused-vars
+        "@typescript-eslint/no-unused-vars": "off",
+        // TODO: reEnable explicit-module-boundary-types
+        "@typescript-eslint/explicit-module-boundary-types": "off"
 
         // -- Rules form tsdoc
         // "tsdoc/syntax": "warn", // TODO: enable once we have better tsdoc coverage

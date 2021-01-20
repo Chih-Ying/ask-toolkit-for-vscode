@@ -2,8 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { AbstractWebView, SmapiClientFactory, Utils, SmapiResource } from '../../runtime';
-import { WebviewPanelOnDidChangeViewStateEvent, ExtensionContext } from 'vscode';
-import { DEFAULT_PROFILE } from '../../constants';
+import { DEFAULT_PROFILE, WEB_VIEW_NAME } from '../../constants';
 import { createSkill } from '../../utils/createSkillHelper';
 import { solveCaptcha } from '../../utils/captchaValidator';
 import { SkillInfo } from '../../models/types';
@@ -16,6 +15,7 @@ import { Logger } from '../../logger';
 type createSkillWebViewType = {
     locale: string;
     runtime: string;
+    region: string;
     skillFolder: string;
     skillName: string;
 };
@@ -23,20 +23,21 @@ type createSkillWebViewType = {
 export class CreateSkillWebview extends AbstractWebView {
     private loader: ViewLoader;
 
-    constructor(viewTitle: string, viewId: string, context: ExtensionContext) {
+    constructor(viewTitle: string, viewId: string, context: vscode.ExtensionContext) {
         super(viewTitle, viewId, context);
-        this.loader = new ViewLoader(this.extensionContext, 'createSkill', this);
+        this.isGlobal = true;
+        this.loader = new ViewLoader(this.extensionContext, WEB_VIEW_NAME.CREATE_SKILL, this);
     }
 
     getHtmlForView(...args: unknown[]): string {
         Logger.debug(`Calling method: ${this.viewId}.getHtmlForView`);
         return this.loader.renderView({
-            name: 'createSkill',
+            name: WEB_VIEW_NAME.CREATE_SKILL,
             js: true
         });
     }
 
-    onViewChangeListener(event: WebviewPanelOnDidChangeViewStateEvent): void {
+    onViewChangeListener(event: vscode.WebviewPanelOnDidChangeViewStateEvent): void {
         Logger.debug(`Calling method: ${this.viewId}.onViewChangeListener`);
 
         return;
@@ -81,7 +82,7 @@ export class CreateSkillWebview extends AbstractWebView {
             }
             try {
                 await this.authenticateNewUser();
-                const filteredProjectName = Utils.filterNonAlphanumeric(message.skillName)
+                const filteredProjectName = Utils.filterNonAlphanumeric(message.skillName);
                 const skillFolderUri = this.createSkillFolder(message.skillFolder, filteredProjectName);
                 const profile = Utils.getCachedProfile(this.extensionContext) ?? DEFAULT_PROFILE;
                 const vendorId = Utils.resolveVendorId(profile);
@@ -117,7 +118,12 @@ export class CreateSkillWebview extends AbstractWebView {
         Logger.verbose(`Calling method: ${this.viewId}.createSmapiResource, args: `, skillId, skillName);
         let profile = Utils.getCachedProfile(this.extensionContext);
         profile = profile ?? DEFAULT_PROFILE;
-        const vendorId = Utils.resolveVendorId(profile);
+        let vendorId: string;
+        try {
+            vendorId = Utils.resolveVendorId(profile);
+        } catch (err) {
+            throw loggableAskError(`Failed to retrieve vendorID for profile ${profile}`, err, true);
+        }
 
         const smapiClient = SmapiClientFactory.getInstance(profile, this.extensionContext);
         const skillSummary = (await smapiClient.listSkillsForVendorV1(
@@ -127,7 +133,7 @@ export class CreateSkillWebview extends AbstractWebView {
         }
 
         const hostedSkillMetadata = await smapiClient.getAlexaHostedSkillMetadataV1(skillId);
-        if (!hostedSkillMetadata) {
+        if (hostedSkillMetadata === undefined) {
             throw loggableAskError("No Alexa hosted skill is found.");
         }
 
@@ -152,7 +158,7 @@ export class CreateSkillWebview extends AbstractWebView {
 
             const incrAmt = 25;
             const skillId = await createSkill(
-                message.skillName, message.runtime, message.locale, profile ?? DEFAULT_PROFILE, vendorId, this.extensionContext);
+                message.skillName, message.runtime, message.region, message.locale, profile ?? DEFAULT_PROFILE, vendorId, this.extensionContext);
             progress.report({
                 increment: incrAmt,
                 message: 'Skill created. Retrieving skill details...'

@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import { AbstractWebView } from '../../runtime';
-import { ExtensionContext, WebviewPanelOnDidChangeViewStateEvent } from 'vscode';
-import { GIT_MESSAGES } from '../../constants';
+import { GIT_MESSAGES, EXTENSION_STATE_KEY, WEB_VIEW_NAME, DYNAMIC_CONTENT } from '../../constants';
 import { isGitInstalled } from '../../utils/gitHelper';
 import { ViewLoader } from '../../utils/webViews/viewLoader';
 import { Logger } from '../../logger';
-import { EXTENSION_STATE_KEY } from '../../constants';
+import axios from 'axios';
 
 type welcomeScreenViewType = {
     target?: string;
@@ -16,12 +15,13 @@ type welcomeScreenViewType = {
 export class WelcomeScreenWebview extends AbstractWebView {
     private loader: ViewLoader;
 
-    constructor(viewTitle: string, viewId: string, context: ExtensionContext) {
+    constructor(viewTitle: string, viewId: string, context: vscode.ExtensionContext) {
         super(viewTitle, viewId, context);
-        this.loader = new ViewLoader(this.extensionContext, 'welcomeScreen', this);
+        this.isGlobal = true;
+        this.loader = new ViewLoader(this.extensionContext, WEB_VIEW_NAME.WELCOME_SCREEN, this);
     }
 
-    onViewChangeListener(event: WebviewPanelOnDidChangeViewStateEvent): void {
+    onViewChangeListener(event: vscode.WebviewPanelOnDidChangeViewStateEvent): void {
         Logger.debug(`Calling method: ${this.viewId}.onViewChangeListener`);
 
         const enabled = vscode.workspace.getConfiguration(
@@ -32,6 +32,8 @@ export class WelcomeScreenWebview extends AbstractWebView {
                 enabled: enabled ? true : false
             }
         );
+        this.getBlogUpdates();
+        this.getFeatureUpdates();
         return;
     }
 
@@ -57,7 +59,7 @@ export class WelcomeScreenWebview extends AbstractWebView {
                 EXTENSION_STATE_KEY.SHOW_WELCOME_SCREEN);
         this.checkGitInstallation();
         return this.loader.renderView({
-            name: 'welcomeScreen',
+            name: WEB_VIEW_NAME.WELCOME_SCREEN,
             js: false,
             args: {
                 enabled: enabled ? 'checked' : ''
@@ -69,6 +71,24 @@ export class WelcomeScreenWebview extends AbstractWebView {
         Logger.verbose(`Calling method: checkGitInstallation`);
         if (!isGitInstalled()) {
             vscode.window.showWarningMessage(GIT_MESSAGES.GIT_NOT_FOUND);
+        }
+    }
+     
+    private async getBlogUpdates(): Promise<void> {
+        try {
+            const res = await axios.get(DYNAMIC_CONTENT.BLOG_POSTS_JSON);
+            void this.getPanel().webview.postMessage({ blogUpdates: res.data.listComponent.slice(0, 3) });
+        } catch (err) {
+            void this.getPanel().webview.postMessage({ blogUpdates: {error: err} });
+        }
+    }
+ 
+    private async getFeatureUpdates(): Promise<void> {
+        try {
+            const res = await axios.get(DYNAMIC_CONTENT.ASK_UPDATES_JSON);
+            void this.getPanel().webview.postMessage({ featureUpdates: res.data.updates.slice(0, 3) });
+        } catch (err) {
+            void this.getPanel().webview.postMessage({ featureUpdates: {error: err} });
         }
     }
 }

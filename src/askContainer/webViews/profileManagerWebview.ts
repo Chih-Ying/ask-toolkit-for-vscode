@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { AbstractWebView, Utils } from '../../runtime';
-import { WebviewPanelOnDidChangeViewStateEvent, ExtensionContext, Uri, Webview } from 'vscode';
 import { authenticate } from '../../utils/webViews/authHelper';
 import { ViewLoader } from '../../utils/webViews/viewLoader';
 import { AskParameterAbsenceError } from '../../exceptions';
 import { Logger } from '../../logger';
+import { WEB_VIEW_NAME } from '../../constants';
 
 export const AUTH_FLOW_RESULT = {
     SUCCESS: {
@@ -29,52 +29,53 @@ export const AUTH_FLOW_RESULT = {
 export class ProfileManagerWebview extends AbstractWebView {
     private loader: ViewLoader;
 
-    constructor(viewTitle: string, viewId: string, context: ExtensionContext) {
+    constructor(viewTitle: string, viewId: string, context: vscode.ExtensionContext) {
         super(viewTitle, viewId, context);
-        this.loader = new ViewLoader(this.extensionContext, 'profileManager', this);
+        this.isGlobal = true;
+        this.loader = new ViewLoader(this.extensionContext, WEB_VIEW_NAME.PROFILE_MANAGER, this);
     }
     
-    onViewChangeListener(event: WebviewPanelOnDidChangeViewStateEvent): void {
+    onViewChangeListener(event: vscode.WebviewPanelOnDidChangeViewStateEvent): void {
         Logger.debug(`Calling method: ${this.viewId}.onViewChangeListener`);
         if (event.webviewPanel.visible) {
             this.populateProfilesList();
         }
     }    
     
-    onReceiveMessageListener(message: any): void {
+    async onReceiveMessageListener(message: any): Promise<void> {
         Logger.debug(`Calling method: ${this.viewId}.onReceiveMessageListener, args: `, message);
         if ("profileName" in message) {
             if (!Utils.isNonBlankString(message.profileName)) {
                 const errorMessage = "A profile name is required.";
-                vscode.window.showErrorMessage(errorMessage);
-                this.getPanel().webview.postMessage(
+                void vscode.window.showErrorMessage(errorMessage);
+                void this.getPanel().webview.postMessage(
                     {
                         reEnable: true 
                     }
                 );
                 return;
             }
-            this.doAuthenticate(message.profileName);
+            await this.doAuthenticate(message.profileName);
         } else if("deleteProfile" in message) {
             const currentProfile = Utils.getCachedProfile(this.extensionContext);
             if (currentProfile === message.deleteProfile) {
                 const errMsg = 'Cannot delete the currently active profile';
                 Logger.error(errMsg);
-                vscode.window.showErrorMessage(errMsg);
+                void vscode.window.showErrorMessage(errMsg);
             } else {
                 Utils.deleteProfile(message.deleteProfile);
                 this.populateProfilesList();
                 const deleteProfileMsg = `Profile ${message.deleteProfile} was deleted`;
                 Logger.info(deleteProfileMsg);
-                vscode.window.showInformationMessage(deleteProfileMsg);
+                void vscode.window.showInformationMessage(deleteProfileMsg);
             }
         }
     }
 
-    getHtmlForView(...args: unknown[]): string {
+    getHtmlForView(): string {
         Logger.debug(`Calling method: ${this.viewId}.getHtmlForView`);
         return this.loader.renderView({
-            name: 'profileManager',
+            name: WEB_VIEW_NAME.PROFILE_MANAGER,
             js: true
         });
     }
@@ -108,7 +109,7 @@ export class ProfileManagerWebview extends AbstractWebView {
         Logger.debug(`Calling method: ${this.viewId}.populateProfilesList`);
         const profileNames = Utils.listExistingProfileNames();
         if (profileNames) {
-            this.getPanel().webview.postMessage({ profiles: profileNames });
+            void this.getPanel().webview.postMessage({ profiles: profileNames });
         }
     }
 
